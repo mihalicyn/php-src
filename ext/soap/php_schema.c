@@ -1705,7 +1705,10 @@ static int schema_element(sdlPtr sdl, xmlAttrPtr tns, xmlNodePtr element, sdlTyp
 		} else if (node_is_equal(trav,"keyref")) {
 			/* TODO: <keyref> support */
 		} else {
-			soap_error1(E_ERROR, "Parsing Schema: unexpected <%s> in element", trav->name);
+			char* _old_error_code = SOAP_GLOBAL(error_code);
+			SOAP_GLOBAL(error_code) = "WSDL_WARNING";
+			soap_error1(E_WARNING, "Parsing Schema: unexpected <%s> in element. Node will be ignored.", trav->name);
+			SOAP_GLOBAL(error_code) = _old_error_code;
 		}
 		trav = trav->next;
 	}
