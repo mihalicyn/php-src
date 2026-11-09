@@ -1,0 +1,39 @@
+# phpBB CLI installer configuration, used by run-local.sh install
+installer:
+    admin:
+        name: admin
+        password: adminadmin
+        email: admin@example.org
+
+    board:
+        lang: en
+        name: AT_EXECVE_CHECK demo
+        description: phpBB on PHP with executability checks
+
+    database:
+        dbms: sqlite3
+        dbhost: /var/www/data/phpbb.sqlite
+        dbport: ~
+        dbuser: ~
+        dbpasswd: ~
+        dbname: ~
+        table_prefix: phpbb_
+
+    email:
+        enabled: false
+        smtp_delivery : ~
+        smtp_host: ~
+        smtp_port: ~
+        smtp_auth: ~
+        smtp_user: ~
+        smtp_pass: ~
+
+    server:
+        cookie_secure: false
+        server_protocol: http://
+        force_server_vars: false
+        server_name: localhost
+        server_port: 80
+        script_path: /
+
+    extensions: ['phpbb/viglink']
