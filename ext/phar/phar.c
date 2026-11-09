@@ -3168,6 +3168,12 @@ static size_t phar_zend_stream_fsizer(void *handle) /* {{{ */
 	return ((phar_archive_data*)handle)->halt_offset + 32;
 } /* }}} */
 
+static int phar_zend_stream_fd(void *handle, bool *interactive) /* {{{ */
+{
+	*interactive = false;
+	return phar_get_archive_exec_fd((phar_archive_data*)handle);
+} /* }}} */
+
 zend_op_array *(*phar_orig_compile_file)(zend_file_handle *file_handle, int type);
 
 static bool phar_has_marker_in_filename(const zend_string *filename)
@@ -3245,6 +3251,7 @@ static zend_op_array *phar_compile_file(zend_file_handle *file_handle, int type)
 				file_handle->handle.stream.reader  = phar_zend_stream_reader;
 				file_handle->handle.stream.closer  = NULL;
 				file_handle->handle.stream.fsizer  = phar_zend_stream_fsizer;
+				file_handle->handle.stream.fd      = phar_zend_stream_fd;
 				file_handle->handle.stream.isatty  = 0;
 				phar->is_persistent ?
 					php_stream_rewind(PHAR_G(cached_fp)[phar->phar_pos].fp) :

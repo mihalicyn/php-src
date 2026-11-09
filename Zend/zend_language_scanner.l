@@ -651,13 +651,26 @@ static zend_op_array *zend_compile(zend_function_type type)
 	return op_array;
 }
 
+/* Opens a file to compile and execute it: also checks that the kernel
+ * allows executing it (see zend_exec_check_file_handle()) */
+static zend_result open_file_for_execution(zend_file_handle *file_handle)
+{
+	if (open_file_for_scanning(file_handle) == FAILURE) {
+		return FAILURE;
+	}
+	if (CG(compiler_options) & ZEND_COMPILE_NO_EXEC_CHECK) {
+		return SUCCESS;
+	}
+	return zend_exec_check_file_handle(file_handle);
+}
+
 ZEND_API zend_op_array *compile_file(zend_file_handle *file_handle, int type)
 {
 	zend_lex_state original_lex_state;
 	zend_op_array *op_array = NULL;
 	zend_save_lexical_state(&original_lex_state);
 
-	if (open_file_for_scanning(file_handle)==FAILURE) {
+	if (open_file_for_execution(file_handle)==FAILURE) {
 		if (!EG(exception)) {
 			if (type==ZEND_REQUIRE) {
 				zend_message_dispatcher(ZMSG_FAILED_REQUIRE_FOPEN, ZSTR_VAL(file_handle->filename));

@@ -852,6 +852,15 @@ static int do_cli(int argc, char **argv) /* {{{ */
 		}
 #endif
 
+		/* Code given on the command line and the interactive shell do not
+		 * come from a file whose executability the kernel could check. */
+		if ((interactive || exec_direct || exec_begin || exec_run || exec_end)
+		 && zend_exec_deny_interactive()) {
+			fprintf(stderr, "Could not execute %s: blocked by EXEC_DENY_INTERACTIVE\n",
+				interactive ? "interactive shell" : "command line code");
+			goto err;
+		}
+
 		if (interactive) {
 			printf("Interactive shell\n\n");
 			fflush(stdout);

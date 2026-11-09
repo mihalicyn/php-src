@@ -21,6 +21,13 @@
 #include "zend.h"
 #include "zend_compile.h"
 #include "zend_stream.h"
+#include "zend_exceptions.h"
+
+#ifdef __linux__
+# include <sys/prctl.h>
+# include <sys/syscall.h>
+# include <unistd.h>
+#endif
 
 ZEND_DLIMPORT int isatty(int fd);
 
@@ -34,6 +41,12 @@ static void zend_stream_stdio_closer(void *handle) /* {{{ */
 	if (handle && (FILE*)handle != stdin) {
 		fclose((FILE*)handle);
 	}
+} /* }}} */
+
+static int zend_stream_stdio_fd(void *handle, bool *interactive) /* {{{ */
+{
+	*interactive = (FILE*)handle == stdin;
+	return fileno((FILE*)handle);
 } /* }}} */
 
 static size_t zend_stream_stdio_fsizer(void *handle) /* {{{ */
@@ -150,6 +163,7 @@ ZEND_API zend_result zend_stream_fixup(zend_file_handle *file_handle, char **buf
 		file_handle->handle.stream.reader = (zend_stream_reader_t)zend_stream_stdio_reader;
 		file_handle->handle.stream.closer = (zend_stream_closer_t)zend_stream_stdio_closer;
 		file_handle->handle.stream.fsizer = (zend_stream_fsizer_t)zend_stream_stdio_fsizer;
+		file_handle->handle.stream.fd = (zend_stream_fd_t)zend_stream_stdio_fd;
 	}
 
 	file_size = zend_stream_fsize(file_handle);
@@ -285,3 +299,110 @@ void zend_stream_shutdown(void) /* {{{ */
 {
 	zend_llist_destroy(&CG(open_files));
 } /* }}} */
+
+/* {{{ Executability checks
+ *
+ * Linux 6.14 added the AT_EXECVE_CHECK flag for execveat(), which asks the
+ * kernel whether a file could be executed without executing it, and the
+ * SECBIT_EXEC_RESTRICT_FILE and SECBIT_EXEC_DENY_INTERACTIVE securebits, which
+ * tell script interpreters to enforce the result of that check.
+ *
+ * The check is performed on every file that is compiled, so that it can be
+ * audited (e.g. with strace -e trace=execveat), but its result is only
+ * enforced when the corresponding securebit is set. On older kernels the
+ * unknown flag makes execveat() fail with EINVAL without executing anything,
+ * and the securebits can't be set. */
+#if defined(__linux__) && defined(SYS_execveat)
+/* from <linux/fcntl.h> */
+# ifndef AT_EMPTY_PATH
+#  define AT_EMPTY_PATH 0x1000
+# endif
+# ifndef AT_EXECVE_CHECK
+#  define AT_EXECVE_CHECK 0x10000
+# endif
+/* from <linux/securebits.h> */
+# define ZEND_SECBIT_EXEC_RESTRICT_FILE    (1 << 8)
+# define ZEND_SECBIT_EXEC_DENY_INTERACTIVE (1 << 10)
+
+static bool zend_exec_securebit_is_set(int bit)
+{
+	int secbits = prctl(PR_GET_SECUREBITS);
+	return secbits >= 0 && (secbits & bit);
+}
+
+ZEND_API bool zend_exec_check_fd(int fd, const char *name)
+{
+	/* Not every libc provides an execveat() wrapper */
+	char *const argv[2] = { (char *) name, NULL };
+	return syscall(SYS_execveat, fd, "", argv, NULL, AT_EMPTY_PATH | AT_EXECVE_CHECK) == 0;
+}
+
+ZEND_API bool zend_exec_restrict_file(void)
+{
+	return zend_exec_securebit_is_set(ZEND_SECBIT_EXEC_RESTRICT_FILE);
+}
+
+ZEND_API bool zend_exec_deny_interactive(void)
+{
+	return zend_exec_securebit_is_set(ZEND_SECBIT_EXEC_DENY_INTERACTIVE);
+}
+#else
+ZEND_API bool zend_exec_check_fd(int fd, const char *name)
+{
+	(void) fd;
+	(void) name;
+	return true;
+}
+
+ZEND_API bool zend_exec_restrict_file(void)
+{
+	return false;
+}
+
+ZEND_API bool zend_exec_deny_interactive(void)
+{
+	return false;
+}
+#endif
+
+ZEND_API zend_result zend_exec_check_file_handle(zend_file_handle *file_handle)
+{
+	int fd = -1;
+	bool interactive = false;
+
+	ZEND_ASSERT(file_handle->type == ZEND_HANDLE_STREAM);
+
+	if (file_handle->handle.stream.fd) {
+		fd = file_handle->handle.stream.fd(file_handle->handle.stream.handle, &interactive);
+	}
+
+	if (fd >= 0) {
+		char fd_name[sizeof("/proc/self/fd/") + MAX_LENGTH_OF_LONG];
+		const char *name = ZSTR_VAL(file_handle->filename);
+
+		if (interactive) {
+			snprintf(fd_name, sizeof(fd_name), "/proc/self/fd/%d", fd);
+			name = fd_name;
+		}
+		if (zend_exec_check_fd(fd, name)) {
+			return SUCCESS;
+		}
+	}
+
+	/* Either the kernel refused, or there is no file descriptor that it
+	 * could check (e.g. a data:// stream or a user stream wrapper). */
+	if (interactive) {
+		if (zend_exec_deny_interactive()) {
+			zend_throw_error(NULL, "Failed to execute \"%s\": blocked by EXEC_DENY_INTERACTIVE",
+				ZSTR_VAL(file_handle->filename));
+			return FAILURE;
+		}
+	} else if (zend_exec_restrict_file()) {
+		zend_throw_error(NULL, "Failed to execute \"%s\": blocked by EXEC_RESTRICT_FILE",
+			ZSTR_VAL(file_handle->filename));
+		return FAILURE;
+	}
+
+	return SUCCESS;
+}
+/* }}} */

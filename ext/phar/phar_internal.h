@@ -312,6 +312,26 @@ static inline php_stream *phar_get_pharfp(const phar_archive_data *phar)
 	return PHAR_G(cached_fp)[phar->phar_pos].fp;
 }
 
+/* The file descriptor of a plain file stream, or -1. AS_FD_FOR_SELECT, as
+ * only the underlying descriptor is needed, even if the stream is filtered. */
+static inline int phar_stream_get_fd(php_stream *fp)
+{
+	int fd;
+
+	if (fp && php_stream_is(fp, PHP_STREAM_IS_STDIO)
+	 && php_stream_cast(fp, PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL, (void **) &fd, 0) == SUCCESS) {
+		return fd;
+	}
+	return -1;
+}
+
+/* The file descriptor of the archive, so that the kernel can check whether
+ * code in it may be executed (see zend_exec_check_file_handle()) */
+static inline int phar_get_archive_exec_fd(const phar_archive_data *phar)
+{
+	return phar_stream_get_fd(phar_get_pharfp(phar));
+}
+
 static inline enum phar_fp_type phar_get_fp_type(const phar_entry_info *entry)
 {
 	if (!entry->is_persistent) {

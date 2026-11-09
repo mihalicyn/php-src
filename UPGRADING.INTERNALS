@@ -54,6 +54,21 @@ PHP 8.7 INTERNALS UPGRADE NOTES
 - The ZTS symbols compiler_globals_offset and executor_globals_offset have been
   removed: CG()/EG() now reach the globals through a __thread struct.
 - Removed zend_error_noreturn_unchecked().
+- compile_file() now checks whether the kernel allows executing a file before
+  compiling it (Linux AT_EXECVE_CHECK), and enforces the result when the
+  SECBIT_EXEC_RESTRICT_FILE or SECBIT_EXEC_DENY_INTERACTIVE securebits are set.
+  See zend_exec_check_file_handle(), zend_exec_check_fd(),
+  zend_exec_restrict_file() and zend_exec_deny_interactive(). The check can be
+  skipped for files that are compiled but not executed with the new
+  ZEND_COMPILE_NO_EXEC_CHECK compiler option.
+- zend_stream has a new fd callback, which returns the file descriptor that the
+  code is read from. Code that creates ZEND_HANDLE_STREAM file handles itself
+  should set it; if it is NULL, the code is treated as not coming from a file
+  and is refused when SECBIT_EXEC_RESTRICT_FILE is set.
+- Added the PHP_STREAM_OPTION_EXEC_FD stream option. Streams that read code
+  from a part of a file (e.g. an entry in an archive) and can't be cast to a
+  file descriptor can implement it to return the descriptor of that file.
+  php_stream_get_exec_fd() queries it.
 
 ========================
 2. Build system changes

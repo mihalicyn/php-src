@@ -33,4 +33,5 @@ static int    phar_stream_close(php_stream *stream, int close_handle);
 static int    phar_stream_flush(php_stream *stream);
 static int    phar_stream_seek( php_stream *stream, zend_off_t offset, int whence, zend_off_t *newoffset);
 static int    phar_stream_stat( php_stream *stream, php_stream_statbuf *ssb);
+static int    phar_stream_set_option(php_stream *stream, int option, int value, void *ptrparam);
 END_EXTERN_C()

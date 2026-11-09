@@ -29,7 +29,7 @@ static const php_stream_ops phar_ops = {
 	phar_stream_seek,  /* seek */
 	NULL,              /* cast */
 	phar_stream_stat,  /* stat */
-	NULL, /* set option */
+	phar_stream_set_option, /* set option */
 };
 
 static const php_stream_wrapper_ops phar_stream_wops = {
@@ -467,6 +467,33 @@ static ssize_t phar_stream_write(php_stream *stream, const char *buf, size_t cou
 	data->internal_file->old_flags = data->internal_file->flags;
 	data->internal_file->is_modified = true;
 	return count;
+}
+/* }}} */
+
+static int phar_stream_set_option(php_stream *stream, int option, int value, void *ptrparam) /* {{{ */
+{
+	const phar_entry_data *data = stream->abstract;
+
+	if (option != PHP_STREAM_OPTION_EXEC_FD) {
+		return PHP_STREAM_OPTION_RETURN_NOTIMPL;
+	}
+
+	switch (phar_get_fp_type(data->internal_file)) {
+		case PHAR_FP:
+		case PHAR_UFP:
+			/* Read from the archive, or decompressed from it */
+			*(int *) ptrparam = phar_get_archive_exec_fd(data->phar);
+			break;
+		case PHAR_TMP:
+			/* A file outside of the archive, mounted with Phar::mount() */
+			*(int *) ptrparam = phar_stream_get_fd(data->fp);
+			break;
+		default:
+			/* Modified in memory, not read from any file */
+			*(int *) ptrparam = -1;
+			break;
+	}
+	return *(int *) ptrparam >= 0 ? PHP_STREAM_OPTION_RETURN_OK : PHP_STREAM_OPTION_RETURN_ERR;
 }
 /* }}} */
 

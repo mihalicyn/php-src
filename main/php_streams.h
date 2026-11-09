@@ -494,6 +494,14 @@ END_EXTERN_C()
 
 #define php_stream_sync_supported(stream)	(php_stream_set_option((stream), PHP_STREAM_OPTION_SYNC_API, PHP_STREAM_SYNC_SUPPORTED, NULL) == PHP_STREAM_OPTION_RETURN_OK ? 1 : 0)
 
+/* Get the file descriptor of the file that the code read from this stream
+ * comes from, so that the kernel can check whether it may be executed. This
+ * is for streams that read from a part of a file, such as an entry in an
+ * archive, and can't be cast to a file descriptor. ptrparam is an int*. */
+#define PHP_STREAM_OPTION_EXEC_FD		15
+
+#define php_stream_get_exec_fd(stream, fdp)	(php_stream_set_option((stream), PHP_STREAM_OPTION_EXEC_FD, 0, (fdp)) == PHP_STREAM_OPTION_RETURN_OK)
+
 
 #define PHP_STREAM_OPTION_RETURN_OK			 0 /* option set OK */
 #define PHP_STREAM_OPTION_RETURN_ERR		-1 /* problem setting option */

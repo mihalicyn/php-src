@@ -32,6 +32,10 @@
 typedef size_t (*zend_stream_fsizer_t)(void* handle);
 typedef ssize_t (*zend_stream_reader_t)(void* handle, char *buf, size_t len);
 typedef void   (*zend_stream_closer_t)(void* handle);
+/* Returns the file descriptor that the code is read from, or -1 if there is
+ * none whose executability the kernel could check. *interactive is set if
+ * the code does not come from a named file (e.g. stdin). */
+typedef int    (*zend_stream_fd_t)(void* handle, bool *interactive);
 
 #define ZEND_MMAP_AHEAD 32
 
@@ -47,6 +51,7 @@ typedef struct _zend_stream {
 	zend_stream_reader_t   reader;
 	zend_stream_fsizer_t   fsizer;
 	zend_stream_closer_t   closer;
+	zend_stream_fd_t       fd;
 } zend_stream;
 
 typedef struct _zend_file_handle {
@@ -70,6 +75,21 @@ ZEND_API void zend_stream_init_filename_ex(zend_file_handle *handle, zend_string
 ZEND_API zend_result zend_stream_open(zend_file_handle *handle);
 ZEND_API zend_result zend_stream_fixup(zend_file_handle *file_handle, char **buf, size_t *len);
 ZEND_API void zend_destroy_file_handle(zend_file_handle *file_handle);
+
+/* Executability checks (Linux 6.14+ AT_EXECVE_CHECK; no-ops elsewhere).
+ *
+ * zend_exec_check_fd() asks the kernel whether the file open on fd may be
+ * executed; name is passed as argv[0] so that audit tools can see which file
+ * was checked. zend_exec_restrict_file() and zend_exec_deny_interactive()
+ * report whether SECBIT_EXEC_RESTRICT_FILE or SECBIT_EXEC_DENY_INTERACTIVE
+ * are set, i.e. whether the result of the check must be enforced.
+ *
+ * zend_exec_check_file_handle() checks an opened file handle and applies that
+ * policy. It throws an Error and returns FAILURE if the code must not run. */
+ZEND_API bool zend_exec_check_fd(int fd, const char *name);
+ZEND_API bool zend_exec_restrict_file(void);
+ZEND_API bool zend_exec_deny_interactive(void);
+ZEND_API zend_result zend_exec_check_file_handle(zend_file_handle *file_handle);
 
 void zend_stream_init(void);
 void zend_stream_shutdown(void);

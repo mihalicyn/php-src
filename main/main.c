@@ -48,6 +48,7 @@
 #include "php_syslog.h"
 #include "fopen_wrappers.h"
 #include "ext/standard/php_standard.h"
+#include "ext/standard/php_fopen_wrappers.h"
 #include "ext/date/php_date.h"
 #include "ext/random/php_random_csprng.h"
 #include "ext/random/php_random_zend_utils.h"
@@ -1656,6 +1657,33 @@ static size_t php_zend_stream_fsizer(void *handle) /* {{{ */
 }
 /* }}} */
 
+static int php_zend_stream_fd(void *handle, bool *interactive) /* {{{ */
+{
+	php_stream *stream = handle;
+	int fd = -1;
+
+	/* php://stdin, php://fd/N and the like do not come from a named file,
+	 * but php://filter reads from the file it wraps. */
+	*interactive = stream->wrapper == &php_stream_php_wrapper
+		&& !(stream->orig_path && strncasecmp(stream->orig_path, "php://filter", sizeof("php://filter") - 1) == 0);
+
+	/* Don't cast other streams, as that has side effects (e.g. user
+	 * wrappers' stream_cast() is called, temp streams are spilled to disk).
+	 * Only the underlying descriptor is needed, not one that yields the same
+	 * data, so use AS_FD_FOR_SELECT, which also works on filtered streams
+	 * (php://filter). */
+	if (php_stream_is(stream, PHP_STREAM_IS_STDIO)) {
+		if (php_stream_cast(stream, PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL, (void **) &fd, 0) == FAILURE) {
+			fd = -1;
+		}
+	} else if (!php_stream_get_exec_fd(stream, &fd)) {
+		fd = -1;
+	}
+
+	return fd;
+}
+/* }}} */
+
 static zend_result php_stream_open_for_zend(zend_file_handle *handle) /* {{{ */
 {
 	return php_stream_open_for_zend_ex(handle, USE_PATH|REPORT_ERRORS|STREAM_OPEN_FOR_INCLUDE);
@@ -1681,6 +1709,7 @@ PHPAPI zend_result php_stream_open_for_zend_ex(zend_file_handle *handle, int mod
 		handle->handle.stream.fsizer  = php_zend_stream_fsizer;
 		handle->handle.stream.isatty  = 0;
 		handle->handle.stream.closer = php_zend_stream_closer;
+		handle->handle.stream.fd = php_zend_stream_fd;
 		/* suppress warning if this stream is not explicitly closed */
 		php_stream_auto_cleanup(stream);
 		/* Disable buffering to avoid double buffering between PHP and Zend streams. */
@@ -2775,7 +2804,10 @@ PHPAPI zend_result php_lint_script(zend_file_handle *file)
 {
 	zend_op_array *op_array;
 	zend_result retval = FAILURE;
+	uint32_t orig_compiler_options = CG(compiler_options);
 
+	/* The file is only compiled, not executed */
+	CG(compiler_options) |= ZEND_COMPILE_NO_EXEC_CHECK;
 	zend_try {
 		op_array = zend_compile_file(file, ZEND_INCLUDE);
 
@@ -2785,6 +2817,7 @@ PHPAPI zend_result php_lint_script(zend_file_handle *file)
 			retval = SUCCESS;
 		}
 	} zend_end_try();
+	CG(compiler_options) = orig_compiler_options;
 	if (EG(exception)) {
 		zend_exception_error(EG(exception), E_ERROR);
 	}

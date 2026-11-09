@@ -1321,6 +1321,9 @@ END_EXTERN_C()
 /* ignore observer notifications, e.g. to manually notify afterwards in a post-processing step after compilation */
 #define ZEND_COMPILE_IGNORE_OBSERVER			(1<<18)
 
+/* Don't check whether compiled files may be executed (e.g. php -l) */
+#define ZEND_COMPILE_NO_EXEC_CHECK				(1<<19)
+
 /* The default value for CG(compiler_options) */
 #define ZEND_COMPILE_DEFAULT					ZEND_COMPILE_HANDLE_OP_ARRAY
 
